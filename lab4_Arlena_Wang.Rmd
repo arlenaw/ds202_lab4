@@ -1,0 +1,192 @@
+---
+title: "lab 4"
+author: "Arlena Wang"
+date: "10/27/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+#Loading Data
+
+```{r}
+library(readxl)
+defense <- read_excel('cyclonesFootball2020.xlsx', sheet='Defensive')
+offense <- read_excel('cyclonesFootball2020.xlsx', sheet='Offensive')
+biography <- read_excel('cyclonesFootball2020.xlsx', sheet='Biography')
+str(defense)
+str(offense)
+str(biography)
+library(ggplot2)
+library(tidyverse)
+library(dplyr)
+library(tidyr)
+library(knitr)
+```
+
+#Clearning data
+
+**1.) The player names and opponent names should be factors.**
+
+```{r}
+defense %>%
+  factor("Name", "Opponent_Opponent")
+offense %>%
+  factor("Name", "Opponent_Opponent")
+biography %>%
+  factor("Name")
+```
+
+**2.) All offensive and defensive statistics should be numerical. The Weight column in biogrpahy should also be numeric. (Optional: Read ?across and learn to mutate multiple columns simultaneously using the across function in dplyr)**
+
+```{r}
+defense1 <- defense %>%
+  mutate(
+    across(Tackles_Solo:Pass_PB, as.numeric))
+  
+offense1 <- offense %>%
+  mutate(
+    across(Receiving_REC:Passing_INT, as.numeric))
+
+biography1 <- biography %>%
+   mutate(
+    across(Weight, as.numeric))
+```
+
+**3.) The Height column in biography should be numeric. (Hint: Use a unit that works well)**
+
+```{r}
+bioClean <- biography %>%
+  separate(Height, c('feet', 'inches'), sep = '-', convert = TRUE, remove = FALSE) %>%
+  mutate(Height = 12*feet + inches) %>%
+  select(-feet) %>%
+  select(-inches) %>%
+  summarize(Name, Position, "Height(inches)" = Height, Weight, Class, Hometown, Highschool)
+```
+
+**4.) Add a column to both defense and offense indicating whether it is the first or the second game versus an opponent. We had a single game versus each opponent except for Oklahoma, which we played against twice. (Hint: You can use group_by(), mutate(), and row_number())**
+
+```{r}
+defClean <- defense1 %>%
+  group_by(Name, Opponent_Opponent) %>%
+  mutate(Game = row_number())
+
+offClean <- offense1 %>%
+  group_by(Name, Opponent_Opponent) %>%
+  mutate(Game = row_number())
+```
+
+#Cleaned data
+
+```{r}
+str(defClean)
+str(offClean)
+str(bioClean)
+```
+
+# Tidying and Exploring
+
+**1.) Reformat the offClean data frame into a tidy format using pivot_longer. The type of statistic (Receiving_REC for the number of receivings, Receiving_YDS for receiving yards, etc) is added as a new key column named stat.**
+
+```{r}
+offClean <- offClean %>%
+  pivot_longer(Receiving_REC:Passing_INT, names_to = "stat", values_to = "score")
+offClean
+```
+
+**2.) Obtain the player-level offensive statistics. Namely, for each player and each type of statistics, obtain the sum of the statistics in all games.**
+
+```{r}
+statistics <- offClean %>%
+  group_by(Name, stat) %>%
+  replace(is.na(.), 0) %>%
+  summarize(Sum=sum(score))
+statistics
+```
+
+**3.) Show the distributions of the player-level offensive statistics. The distribution of each offensive statsitic should be shown in a separate facet. Explain the patterns you see.**
+
+```{r}
+ggplot(statistics, aes(x = Name, weight=Sum, fill=Name)) + geom_bar() + facet_wrap(~stat) + coord_flip()
+```
+
+**4.) Did ISU have better offense against Oregon or Oklahoma? Answer this question by creating a scatterplot with the x- and y-axes being the receiving yards of the ISU players against each of these two opponents. A large number of receiving yards indicates good offense.**
+
+```{r}
+Oregon <- offClean %>%
+  group_by(Opponent_Opponent) %>%
+  filter(Opponent_Opponent=="Oregon") %>%
+  filter(stat=="Receiving_YDS") 
+
+Oklahoma <- offClean %>%
+  group_by(Opponent_Opponent) %>%
+  filter(Opponent_Opponent=="Oklahoma") %>%
+  filter(stat=="Receiving_YDS")
+
+ggplot(Oregon, aes(x=Name, y=score)) + geom_point() + labs(title="ISU Vs. Oregon") + theme(axis.text.x=element_text(angle = 90))
+
+ggplot(Oklahoma, aes(x=Name, y=score)) + geom_point() + labs(title="ISU Vs. Oklahoma") + theme(axis.text.x=element_text(angle = 90))
+```
+
+ISU had better offense against Oklahoma as you can see there are more points with a higher value score than Oregon.
+
+**5.) Separate the Hometown column into two columns, namely, the city and the state where the player comes from. Print the first few rows of these two columns. (Hint: look at the sep= argument of separate)**
+
+```{r}
+bioClean <- bioClean %>%
+  separate(Hometown, c('city', 'state'), sep = ',', convert = TRUE, remove = FALSE) %>%
+  mutate(City = city) %>%
+  mutate(State = state) %>%
+  summarize(Name, Position, `Height(inches)`, Weight, Class, Hometown, City, State, Highschool)
+```
+
+**6.) How many players are there from each state?**
+
+```{r}
+players <- bioClean %>%
+  group_by(State) %>%
+  summarize(
+    statePlayers = n(),
+    once = (statePlayers == 1)) %>%
+  select(-once)
+players
+```
+
+**7.) How does the performance of quarterback Brock Purdy relate to the performance of the ISU team? Comment on both the defense and offense.**
+
+```{r}
+Brock <- offClean %>%
+  group_by(stat) %>%
+  replace(is.na(.), 0) %>%
+  filter(Name=="Purdy, Brock")
+
+Team <- offClean %>%
+  group_by(stat) %>%
+  replace(is.na(.), 0)
+
+ggplot(Brock, aes(x=Name, y=score)) + geom_point() + labs(title="Brock Purdy Offense")
+
+ggplot(Team, aes(x=Name, y=score)) + geom_point() + facet_wrap(~stat) + labs(title="ISU Team Offense") + theme(axis.text.x=element_text(angle = 90))
+
+defClean <- defClean %>%
+  pivot_longer(Tackles_Solo:Pass_PB, names_to = "stat", values_to = "score")
+
+Brock2 <- defClean %>%
+  group_by(stat) %>%
+  replace(is.na(.), 0) %>%
+  filter(Name=="Purdy, Brock")
+
+Team2 <- defClean %>%
+  group_by(stat) %>%
+  replace(is.na(.), 0)
+
+ggplot(Brock2, aes(x=Name, y=score)) + geom_point() + labs(title="Brock Purdy Defense")
+
+ggplot(Team2, aes(x=Name, y=score)) + geom_point() + labs(title="ISU Team Defense") + facet_wrap(~stat) + theme(axis.text.x=element_text(angle = 90))
+```
+
+Brock Purdy gains an exceptional amount of points compared to his team.  Therefore, because he is somewhat of an outlier in the scores he gains, his team does better with scores.  Individually, when he does better, his teammates do not do better.  His team performance only does better because he gains most of the points, as you can see in both defense and offense graphs.
